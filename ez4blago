@@ -1,0 +1,323 @@
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Runtime;
+using Autodesk.Civil.ApplicationServices;
+using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.EditorInput;
+
+//распределение зон по слоям с нужным цветом и названием, добавление контуров вокруг штриковки в нужном слое
+//нужна небольшая доработка, объединение полилиний и заполнение полигоном все зоны
+
+namespace CIvil3D_3
+{
+    public class Class1
+    {
+        [CommandMethod("ez4blago")]
+        public void ez4blago()
+        {
+            Database acCurDb = Application.DocumentManager.MdiActiveDocument.Database;
+            Document Docs = Application.DocumentManager.MdiActiveDocument;
+            string[] PlaceBlago = {"255,191,128","254,248,215","253,240,170", "234,239,108", "223,226,207", "214,234,134", "196,135,135", "179,179,255", "176,186,28","131,156,33"};
+            string[] PlaceBlagoName = {"Площадки отдыха взрослых", "Сохраняемые территории", "Территории общего пользования", "Детские игровые площадки", "Озеленение сохраняемое", "Приватные зоны озеленения", "Хозяйственные площадки", "Спортивные площадки", "Приватные территории", "Озеленение публичных территорий"};
+            List<string> layerName = new List<string>();
+            List<string> layerColor = new List<string>();
+            using (Transaction acTrans = Docs.TransactionManager.StartTransaction())
+            {
+
+                CivilDocument doc = CivilApplication.ActiveDocument;
+                Editor ed = Application.DocumentManager.MdiActiveDocument.Editor;
+                PromptSelectionResult SetDraw = ed.GetSelection();
+                int i, y;
+                int z = 0;
+                LayerTable layer = acTrans.GetObject(acCurDb.LayerTableId, OpenMode.ForRead, false, true) as LayerTable;
+
+
+                foreach (ObjectId acObjId in layer)
+                {
+                    LayerTableRecord acLyrTblRec;
+                    acLyrTblRec = acTrans.GetObject(acObjId, OpenMode.ForRead) as LayerTableRecord;
+                    for (i = 0; i < PlaceBlago.Length; i++)
+                    {
+                        if (acLyrTblRec.Color.ToString() == PlaceBlago[i])
+                        {
+
+                            if (layerColor.Count == 0)
+                            {
+                       
+                                layerColor.Add(acLyrTblRec.Color.ToString());
+                                layerName.Add(acLyrTblRec.Name);                                
+                            }
+                            if (layerColor.Count != 0)
+                            {
+                                int res = 0;
+                                for (y = 0; y < layerColor.Count; y++)
+                                {
+                                    if (acLyrTblRec.Color.ToString() == layerColor[y])
+                                    {                                        
+                                        res = 1;
+                                        break;
+                                    }
+                                }
+                                if (res != 1)
+                                {
+                                    layerColor.Add(acLyrTblRec.Color.ToString());
+                                    layerName.Add(acLyrTblRec.Name);
+                                }
+                            }
+                          
+                        }
+                                    
+                    }           
+                    
+                }
+
+                if (layerColor.Count == 0)
+                {
+                    Application.DocumentManager.MdiActiveDocument.Editor.WriteMessage("\nНет подходящих слоев");
+                }
+
+                foreach (ObjectId acObjIdWrite in layer)
+                {
+                    LayerTableRecord acLyrTblRecWrite;
+                    acLyrTblRecWrite = acTrans.GetObject(acObjIdWrite, OpenMode.ForWrite) as LayerTableRecord;
+                    for (i = 0; i < layerName.Count; i++)
+                    {
+                        if (acLyrTblRecWrite.Name == layerName[i])
+                        {
+                            for (y = 0; y < PlaceBlago.Length; y++)
+                            {
+                                if (acLyrTblRecWrite.Color.ToString() == PlaceBlago[y])
+                                {
+
+                                    acLyrTblRecWrite.Name = PlaceBlagoName[y];
+                                    
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                foreach (ObjectId acObjIdWriteHatch in layer)
+                {
+                    LayerTableRecord acLyrTblRecWriteHatch;
+                    acLyrTblRecWriteHatch = acTrans.GetObject(acObjIdWriteHatch, OpenMode.ForWrite) as LayerTableRecord;
+                    for (i = 0; i < layerName.Count; i++)
+                    {
+                        if (acLyrTblRecWriteHatch.Name != PlaceBlagoName[i])
+                        {
+                            for (y = 0; y < layerColor.Count; y++)
+                            {
+                                if (acLyrTblRecWriteHatch.Color.ToString() == PlaceBlago[y])
+                                {
+                                    if (SetDraw.Status == PromptStatus.OK)
+                                    {
+                                        SelectionSet Selset = SetDraw.Value;
+                                        foreach (SelectedObject SelObj in Selset)
+                                        {
+                                            if (SelObj != null)
+                                            {
+                                                if (SelObj.ObjectId.ObjectClass.Name == "AcDbHatch")
+                                                {
+                                                    ObjectId HatchID = SelObj.ObjectId;
+                                                    Hatch hatch = acTrans.GetObject(HatchID, OpenMode.ForWrite, true, true) as Hatch;
+                                                    if (hatch.Layer == acLyrTblRecWriteHatch.Name)
+                                                    {
+                                                        hatch.Layer = PlaceBlagoName[y];      
+                                                    }                                                 
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }                                                                                                         
+                }
+
+                foreach (ObjectId RGBColor in layer)
+                {
+                    LayerTableRecord acLyrTblRecRGB;
+                    acLyrTblRecRGB = acTrans.GetObject(RGBColor, OpenMode.ForRead) as LayerTableRecord;
+                    for (i = 0; i < PlaceBlagoName.Length; i++)
+                    {
+                        if (acLyrTblRecRGB.Name == PlaceBlagoName[i])
+                        {
+                            if (SetDraw.Status == PromptStatus.OK)
+                            {
+                                SelectionSet Selset = SetDraw.Value;
+                                foreach (SelectedObject SelObj in Selset)
+                                {
+                                    if (SelObj != null)
+                                    {
+                                        if (SelObj.ObjectId.ObjectClass.Name == "AcDbHatch")
+                                        {
+                                            ObjectId HatchID = SelObj.ObjectId;
+                                            Hatch hatch = acTrans.GetObject(HatchID, OpenMode.ForWrite, true, true) as Hatch;
+                                            if (hatch.Layer == acLyrTblRecRGB.Name)
+                                            {
+                                                hatch.Color = acLyrTblRecRGB.Color;
+                                              
+                                                
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (SetDraw.Status == PromptStatus.OK)
+                {
+                    SelectionSet Selset = SetDraw.Value;
+                    foreach (SelectedObject SelObj in Selset)
+                    {
+                        if (SelObj != null)
+                        {
+                            if (SelObj.ObjectId.ObjectClass.Name == "AcDbHatch")
+                            {
+                                ObjectId HatchID = SelObj.ObjectId;
+                                Hatch hatch = acTrans.GetObject(HatchID, OpenMode.ForWrite, true, true) as Hatch;
+                                BlockTableRecord btr = acTrans.GetObject(hatch.OwnerId, OpenMode.ForWrite) as BlockTableRecord;
+
+                                if (btr == null) return;
+                                Plane plane = hatch.GetPlane();
+                                int nLoops = hatch.NumberOfLoops;
+                                for (i = 0; i < nLoops; i++)
+                                {
+                                    HatchLoop loop = hatch.GetLoopAt(i);
+                                    if (loop.IsPolyline)
+                                    {
+                                        using (Polyline poly = new Polyline())
+                                        {
+                                            int iVertex = 0;
+                                            foreach (BulgeVertex bv in loop.Polyline)
+                                            {
+                                                poly.AddVertexAt(iVertex++, bv.Vertex, bv.Bulge, 0.0, 0.0);
+                                                poly.Color = hatch.Color;
+                                                poly.Layer = hatch.Layer;
+                                            }                                            
+                                            btr.AppendEntity(poly);
+                                            acTrans.AddNewlyCreatedDBObject(poly, true);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        foreach (Curve2d cv in loop.Curves)
+                                        {
+                                            LineSegment2d line2d = cv as LineSegment2d;
+                                            CircularArc2d arc2d = cv as CircularArc2d;
+                                            EllipticalArc2d ellipse2d = cv as EllipticalArc2d;
+                                            NurbCurve2d spline2d = cv as NurbCurve2d;
+                                            if (line2d != null)
+                                            {
+                                                using (Line ent = new Line())
+                                                {
+                                                    ent.StartPoint = new Point3d(plane, line2d.StartPoint);
+                                                    ent.EndPoint = new Point3d(plane, line2d.EndPoint);
+                                                    ent.Color = hatch.Color;
+                                                    ent.Layer = hatch.Layer;
+                                                    btr.AppendEntity(ent);
+                                                    acTrans.AddNewlyCreatedDBObject(ent, true);
+                                                }
+                                            }
+                                            else if (arc2d != null)
+                                            {
+                                                if (Math.Abs(arc2d.StartAngle - arc2d.EndAngle) < 1e-5)
+                                                {
+                                                    using (Circle ent = new Circle(new Point3d(plane, arc2d.Center), plane.Normal, arc2d.Radius))
+                                                    {
+                                                        ent.Color = hatch.Color;
+                                                        ent.Layer = hatch.Layer;
+                                                        btr.AppendEntity(ent);
+                                                        acTrans.AddNewlyCreatedDBObject(ent, true);
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    double angle = new Vector3d(plane, arc2d.ReferenceVector).AngleOnPlane(plane);
+                                                    using (Arc ent = new Arc(new Point3d(plane, arc2d.Center), arc2d.Radius, arc2d.StartAngle + angle, arc2d.EndAngle + angle))
+                                                    {
+                                                        ent.Color = hatch.Color;
+                                                        ent.Layer = hatch.Layer;
+                                                        btr.AppendEntity(ent);
+                                                        acTrans.AddNewlyCreatedDBObject(ent, true);
+                                                    }
+                                                }
+                                            }
+                                            else if (ellipse2d != null)
+                                            {
+                                                using (Ellipse ent = new Ellipse(new Point3d(plane, ellipse2d.Center), plane.Normal,
+                                                     new Vector3d(plane, ellipse2d.MajorAxis) * ellipse2d.MajorRadius,
+                                                     ellipse2d.MinorRadius / ellipse2d.MajorRadius, ellipse2d.StartAngle, ellipse2d.EndAngle))
+                                                {
+                                                    ent.Color = hatch.Color;
+                                                    ent.Layer = hatch.Layer;
+                                                    ent.GetType().InvokeMember("StartParam", BindingFlags.SetProperty, null,
+                                                      ent, new object[] { ellipse2d.StartAngle });
+                                                    ent.GetType().InvokeMember("EndParam", BindingFlags.SetProperty, null,
+                                                      ent, new object[] { ellipse2d.EndAngle });
+                                                    btr.AppendEntity(ent);
+                                                    acTrans.AddNewlyCreatedDBObject(ent, true);
+                                                }
+
+                                            }
+                                            else if (spline2d != null)
+                                            {
+                                                if (spline2d.HasFitData)
+                                                {
+                                                    NurbCurve2dFitData n2fd = spline2d.FitData;
+                                                    using (Point3dCollection p3ds = new Point3dCollection())
+                                                    {
+                                                        foreach (Point2d p in n2fd.FitPoints) p3ds.Add(new Point3d(plane, p));
+                                                        using (Spline ent = new Spline(p3ds, new Vector3d(plane, n2fd.StartTangent), new Vector3d(plane, n2fd.EndTangent),
+                                                        n2fd.Degree, n2fd.FitTolerance.EqualPoint))
+                                                        {
+                                                            ent.Color = hatch.Color;
+                                                            ent.Layer = hatch.Layer;
+                                                            btr.AppendEntity(ent);
+                                                            acTrans.AddNewlyCreatedDBObject(ent, true);
+                                                        }
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    NurbCurve2dData n2fd = spline2d.DefinitionData;
+                                                    using (Point3dCollection p3ds = new Point3dCollection())
+                                                    {
+                                                        DoubleCollection knots = new DoubleCollection(n2fd.Knots.Count);
+                                                        foreach (Point2d p in n2fd.ControlPoints) p3ds.Add(new Point3d(plane, p));
+                                                        foreach (double k in n2fd.Knots) knots.Add(k);
+                                                        double period = 0;
+                                                        using (Spline ent = new Spline(n2fd.Degree, n2fd.Rational,
+                                                                 spline2d.IsClosed(), spline2d.IsPeriodic(out period),
+                                                                 p3ds, knots, n2fd.Weights, n2fd.Knots.Tolerance, n2fd.Knots.Tolerance))
+                                                        {
+                                                            ent.Color = hatch.Color;
+                                                            ent.Layer = hatch.Layer;
+                                                            btr.AppendEntity(ent);
+                                                            acTrans.AddNewlyCreatedDBObject(ent, true);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                }
+                            }
+                        }
+                    }
+                }
+
+                acTrans.Commit();
+
+            } 
+        }
+    }
+}
