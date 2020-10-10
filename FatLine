@@ -1,0 +1,57 @@
+using Autodesk.AutoCAD.Runtime;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.EditorInput;
+
+//поиск всех отрезков на чертеже и добавление им нужной толщены
+
+namespace FatLine
+{
+    public class Class1
+    {
+        [CommandMethod("FATLINE")]
+        public void FItLine()
+        {
+            Document doc = Application.DocumentManager.MdiActiveDocument;
+            Database db = doc.Database;
+            Editor ed = doc.Editor;
+            //db.Thickness = 1;
+            int fit=0;
+
+            PromptStringOptions pStrOpts = new PromptStringOptions("\nВведите необходимую толщину линий: "); //вывод строки в командную строку и просьба ввести значение у пользователя
+            pStrOpts.AllowSpaces = true; //проверка ввода пользователя, что было введено значение
+            PromptResult pStrRes = doc.Editor.GetString(pStrOpts); //запись вводимого значения в переменную 
+            int fat = int.Parse(pStrRes.StringResult); //парсер стринг в инт
+            
+            using (Transaction acTrans = doc.TransactionManager.StartTransaction())
+            {
+                PromptSelectionResult pr = ed.SelectAll();          
+                if (pr.Status != PromptStatus.OK) //проверка что данные присутствуют
+                {
+                    ed.WriteMessage("\nНичего нет!");
+                    return;
+                }        
+                
+
+                SelectionSet SellSet = pr.Value; 
+                
+                foreach (SelectedObject SelObj in SellSet)
+                {
+                    if (SelObj.ObjectId.ObjectClass.Name == "AcDbLine")
+                    {
+                        ObjectId EntityID = SelObj.ObjectId;
+                        Line poly = acTrans.GetObject(EntityID, OpenMode.ForRead) as Line; //чтение (свойств)
+                        Line acEnt = acTrans.GetObject(EntityID, OpenMode.ForWrite) as Line; //запись (свойств)
+
+                        fit = fit + 1; //расчет количества линий                          
+                        acEnt.Thickness = fat; //применение вводимого значения к толщене линии
+
+
+                    }
+                }
+                acTrans.Commit();
+                ed.WriteMessage("Потолстели "+fit.ToString()+" линий"); //количество потолстевших линий
+            }
+        }
+    }
+}
