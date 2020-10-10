@@ -1,0 +1,64 @@
+//ликвидация повторных сетей, работает только из ПО Autodesk (javaScript)
+
+var UpdateFeatures = function(db, tableNameDWG, tableNameCSV, filter, invalidateTC) {
+    var tableDWG = db.Table(tableNameDWG); //Данные табличек записываются в переменную 
+	var tableCSV = db.Table(tableNameCSV);
+    var countDWG = tableDWG.QueryRowCount(filter); //Количество элементов в табличке
+    var extentDWG = tableDWG.QueryExtent(filter);
+	var countCSV = tableCSV.QueryRowCount(filter);
+    var extentCSV = tableCSV.QueryExtent(filter);
+
+    print("Running script for " + countDWG + " elements in table " + tableNameDWG);
+	print("Running script for " + countCSV + " elements in table " + tableNameCSV);
+	
+	tableDWG.StartQuery(filter); //Разрешает начать работу с таблицей (для чтения)
+    tableDWG.BeginWriteBatch(); //Разрешает начать работу с таблицей (для записи)
+	
+	var Names	= []; //массив для записи данных
+	var read;
+    while(read = tableDWG.Next()) {  //Прогон ячеек таблицы, одна за одной
+		Names.push(read.NAME) //Добавление данных из каждой ячейки в массив NAME
+		//write.Invalidate();
+}
+
+var result = [];
+if(countDWG != 0){
+	   for (i=0;i<countDWG;i++){ //Перебор массива NAME
+		   var x = Names[i];
+		   tableCSV.StartQuery(filter); //Разрешает начать работу с таблицей (для чтения таблицы)
+           tableCSV.BeginWriteBatch(); //Разрешает начать работу с таблицей (для записи в таблицу), позваляет при прогоне цикла начинать прогон ячеек с начала
+			   while(base = tableCSV.Next()){ //Прогон ячеек таблицы, одна за одной
+			   if (base.ID == x){
+				    var write = tableCSV.GetWriteRow(); //переменная для записи в таблицу
+			        result.push(x);
+                    write.TAG = "Povtor"; //Запись String  в столбец TAG
+                    tableCSV.UpdateFeature(write, base.ID); //Обнавление таблицы
+  			   }
+		   }
+           tableCSV.CommitWriteBatch(); //Принятие записываемых данных  
+		   tableCSV.EndQuery(); // Заканчивает работу с таблицей, без нее цикл While будет считать что уже закончился работу после одного прогона. 
+	   }
+   }
+ 
+print("Kolichestvo povtorov: " +result.length);
+print("Ready, have a nice day!");  
+
+tableDWG.EndQuery();
+tableCSV.EndQuery();
+
+app.InvalidateTileCache(db.TableIndex(tableNameDWG), extentDWG);
+}
+
+
+var UpdateTR = function()  {
+
+	var db                  = app.ActiveModelDb; //Добавляет доступ к активной (открытой) модели.
+	var tableNameDWG           = "PIPELINES"; //Запись String  в переменную
+	var tableNameCSV           = "USER_NET";
+	var filter              = "";
+	var invalidateTileCache = true;
+	
+	UpdateFeatures(db, tableNameDWG, tableNameCSV, filter, invalidateTileCache); //Вызов Функции UpdateFeatures и передача переменных в скобках.
+	}
+
+UpdateTR();
