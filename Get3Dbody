@@ -1,0 +1,43 @@
+using Autodesk.AutoCAD.Runtime;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.EditorInput;
+
+//выделение всех 3D-body на чертеже и открытие просмотра
+
+namespace Get3Dbody
+{
+    public class MyCommands
+    {
+        public SelectionFilter GetBody()
+        {
+            TypedValue[] acTypValAr = new TypedValue[1]; //массив значений типов для передачи в фильтр
+            acTypValAr[0] = new TypedValue(0, "3dSolid"); //название типа 3dSolid
+            SelectionFilter lol = new SelectionFilter(acTypValAr); //выделение памяти для фильтра и добавление значение типа
+            return lol;
+        }
+        
+
+        [CommandMethod("Get3Dbody")]
+
+        public void Get3Dbody()
+        {
+            Document doc = Application.DocumentManager.MdiActiveDocument;
+            Database db = doc.Database;
+            Editor ed = doc.Editor;
+            PromptSelectionResult selRes = ed.SelectAll(GetBody()); //добавление метода с фильтром для выбора элементов на чертеже
+          
+            SelectionSet SellSet = selRes.Value;
+            if (selRes.Status != PromptStatus.OK)
+            {
+                ed.WriteMessage("\nError in getting the selectAll!");
+                return;
+            }
+
+            ObjectId[] ids = selRes.Value.GetObjectIds(); 
+            ed.WriteMessage("Solid found: " + ids.Length.ToString() + "\n");            
+            doc.Editor.Command("_ObjectViewer", SellSet); //вызов команды Objeckt Viewer в командной строке с добавление выбраных элементов из SelectAll     
+
+        }              
+    }
+}
