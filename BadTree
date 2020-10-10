@@ -1,0 +1,242 @@
+using System;
+using Autodesk.AutoCAD.Runtime;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Colors;
+
+//выделяет все деревья находящиеся менее чем на n-метров от инженерных коммуникаций
+
+namespace BadTree
+{
+    public class Class1
+    {
+        public SelectionFilter GetElement()
+        {
+            TypedValue[] acTypValAr = new TypedValue[1]; //массив значений типов для передачи в фильтр
+            acTypValAr[0] = new TypedValue(0, "CIRCLE,LINE"); //название типов
+            SelectionFilter lol = new SelectionFilter(acTypValAr); //выделение памяти для фильтра и добавление значение типа
+            return lol;
+        }                             
+
+
+        [CommandMethod("BadTree", CommandFlags.UsePickSet)]
+        public void BadTree()
+        {
+            
+            int count = 0;
+            int z = 0;
+            double distans = 3; //в метрах
+            double war;
+            Document doc = Application.DocumentManager.MdiActiveDocument;
+            Database db = doc.Database;
+            Editor ed = doc.Editor;
+            try
+            {
+                PromptStringOptions pStrOpts = new PromptStringOptions("\nВведите необходимую дистанцию от инженерных коммуникаций: "); //вывод строки в командную строку и просьба ввести значение у пользователя
+                pStrOpts.AllowSpaces = true; //проверка ввода пользователя, что было введено значение
+                PromptResult pStrRes = doc.Editor.GetString(pStrOpts); //запись вводимого значения в переменную 
+                war = double.Parse(pStrRes.StringResult); //парсер стринг в инт
+            }
+            catch { war = distans;
+                ed.WriteMessage("\n Значение расстояния принято равным 3 метра");
+            }
+
+
+            using (Transaction acTrans = doc.TransactionManager.StartTransaction())
+            {
+                ed.WriteMessage("\n"+DateTime.Now.ToString());
+                DateTime date1 = DateTime.Now;
+
+
+                BlockTable acBlkTbl;
+                acBlkTbl = acTrans.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+                LayerTable layer = acTrans.GetObject(db.LayerTableId, OpenMode.ForRead, false, true) as LayerTable;
+
+                foreach (ObjectId LaerOb in layer)
+                {
+                    LayerTableRecord acLyrTblRec;
+                    acLyrTblRec = acTrans.GetObject(LaerOb, OpenMode.ForRead) as LayerTableRecord;
+                    if (acLyrTblRec.Name == "!Bad tree")
+                    {
+                        z = 1;
+                    }
+                }
+
+                if (z == 0)
+                {
+                    layer.UpgradeOpen();
+
+                    LayerTableRecord newLayer = new LayerTableRecord();
+                    newLayer.Name = "!Bad tree";
+
+                    newLayer.LineWeight = LineWeight.LineWeight005;
+                    newLayer.Description = "Слой с деревьями, посаженными близко к коммуникациям";
+
+                    // Красный цвет в формате RGB
+                    newLayer.Color = Color.FromRgb(255, 0, 0);
+
+                    layer.Add(newLayer);
+                    acTrans.AddNewlyCreatedDBObject(newLayer, true);
+                }
+
+                PointToBack:
+                PromptSelectionResult pr = ed.GetSelection(GetElement());
+                if (pr.Status != PromptStatus.OK)
+                {
+                    ed.WriteMessage("\nНичего нет!");
+                    return;
+                }
+                SelectionSet SellSet = pr.Value;
+                long LenghtSellSet = SellSet.Count;
+                ed.WriteMessage("\nКолличество элементов: " + LenghtSellSet.ToString());
+                if(LenghtSellSet > 20000)
+                {
+                     
+                    PromptStringOptions pStrOpts = new PromptStringOptions("\n"+"Колличество элементов привышает 20000 экземпляров, есть риск долгого выполнения утилиты, хотите продолжить? " + "\n[Да/Нет]"); //вывод строки в командную строку и просьба ввести значение у пользователя
+                    pStrOpts.AllowSpaces = true; //проверка ввода пользователя, что было введено значение
+                    PromptResult pStrRes = doc.Editor.GetString(pStrOpts); //запись вводимого значения в переменную 
+
+                    if(pStrRes.StringResult == "Н" || pStrRes.StringResult == null)
+                    {
+                        goto PointToBack;
+                    }
+                    else if(pStrRes.StringResult == "")
+                    {
+                        return;
+                    }
+                    else if(pStrRes.StringResult == "Д")
+                    {
+                        ed.WriteMessage("Начинается расчет, просьба ожидать завершения...");
+                    }
+                    else
+                    {
+                        goto PointToBack;
+                    }
+                }
+
+                foreach(SelectedObject SelObj in SellSet)
+                {
+
+                    if (SelObj.ObjectId.ObjectClass.Name == "AcDbCircle")
+                    {
+                        try
+                        {
+
+                            ObjectId CircleID = SelObj.ObjectId;
+                            Circle circle = acTrans.GetObject(CircleID, OpenMode.ForWrite) as Circle;
+                            Point2d CirclePoint = new Point2d(circle.Center.X, circle.Center.Y);
+
+                            foreach (SelectedObject SelObjLine in SellSet)
+                            {
+                                if (SelObjLine.ObjectId.ObjectClass.Name == "AcDbLine")
+                                {
+                                         ObjectId LineID = SelObjLine.ObjectId;
+                                        Line line = acTrans.GetObject(LineID, OpenMode.ForRead) as Line;
+
+
+                                        Point2d StartPointLine = new Point2d(line.StartPoint.X, line.StartPoint.Y);
+                                        Point2d EndPointLine = new Point2d(line.EndPoint.X, line.EndPoint.Y);
+                                        double x1, y1, z1 = 0;
+                                    
+                                    //опеределение местоположения дерева отнасительно трубы и расчет расстояния между ними
+
+                                        if (EndPointLine.X.ToString() == StartPointLine.X.ToString() || StartPointLine.Y.ToString() == EndPointLine.Y.ToString())
+                                    {
+                                        x1 = CirclePoint.X;
+                                        y1 = CirclePoint.Y;
+                                        double p, l = 0;
+                                        p = Math.Sqrt(Math.Pow((x1 - StartPointLine.X), 2) + Math.Pow((y1 - StartPointLine.Y), 2));
+                                        l = Math.Sqrt(Math.Pow((x1 - EndPointLine.X), 2) + Math.Pow((y1 - EndPointLine.Y), 2));
+              
+
+                                        if (p < war)
+                                        {
+                                            count++;
+                                            circle.Layer = "!Bad tree";
+                                            break;
+                                        }
+                                        else if (l < war)
+                                        {
+                                            count++;
+                                            circle.Layer = "!Bad tree";
+                                            break;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        double g, m, j = 0;
+                                        x1 = (StartPointLine.Y - CirclePoint.Y - ((EndPointLine.X - StartPointLine.X)
+                                            / (EndPointLine.Y - StartPointLine.Y)) * CirclePoint.X - ((EndPointLine.Y - StartPointLine.Y)
+                                            / (EndPointLine.X - StartPointLine.X)) * StartPointLine.X) / (-((EndPointLine.X - StartPointLine.X)
+                                            / (EndPointLine.Y - StartPointLine.Y)) - ((EndPointLine.Y - StartPointLine.Y) / (EndPointLine.X - StartPointLine.X))); // расчет минимального расстояние от дерева до инженерных коммуникаций
+
+                                        y1 = ((EndPointLine.Y - StartPointLine.Y) / (EndPointLine.X - StartPointLine.X)) * x1 - ((EndPointLine.Y - StartPointLine.Y)
+                                            / (EndPointLine.X - StartPointLine.X)) * StartPointLine.X + StartPointLine.Y;
+
+                                        g = Math.Sqrt(Math.Pow((EndPointLine.X - StartPointLine.X), 2) + Math.Pow((EndPointLine.Y - StartPointLine.Y), 2));
+                                        m = Math.Sqrt(Math.Pow((x1 - StartPointLine.X), 2) + Math.Pow((y1 - StartPointLine.Y), 2));
+                                        j = Math.Sqrt(Math.Pow((x1 - EndPointLine.X), 2) + Math.Pow((y1 - EndPointLine.Y), 2));
+
+
+                                        if (j < g && m < g)
+                                        {
+                                            double i, f = 0;
+                                            i = x1 - CirclePoint.X;
+                                            f = y1 - CirclePoint.Y;
+                                            if (i != 0 || f != 0)
+                                            {
+                                                z1 = Math.Sqrt(Math.Pow(i, 2) + Math.Pow(f, 2));
+                                                if (z1 < war)
+                                                {
+                                                    count++;
+                                                    circle.Layer = "!Bad tree";
+                                                    break;
+                                                }
+                                            }
+                                            else if (i == 0 && f == 0)
+                                            {
+                                                count++;
+                                                circle.Layer = "!Bad tree";
+                                                break;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            x1 = CirclePoint.X;
+                                            y1 = CirclePoint.Y;
+                                            double p, l = 0;
+                                            p = Math.Sqrt(Math.Pow((x1 - StartPointLine.X), 2) + Math.Pow((y1 - StartPointLine.Y), 2));
+                                            l = Math.Sqrt(Math.Pow((x1 - EndPointLine.X), 2) + Math.Pow((y1 - EndPointLine.Y), 2));
+
+                                            if (p < war)
+                                            {
+                                                count++;
+                                                circle.Layer = "!Bad tree";
+                                                break;
+                                            }
+                                            else if (l < war)
+                                            {
+                                                count++;
+                                                circle.Layer = "!Bad tree";
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch { int ex = -1; ed.WriteMessage("\n"+ex.ToString()); }
+                    }
+                }
+                acTrans.Commit();
+                ed.WriteMessage("\nОбщее колличество плохих деревьев: " + count.ToString());
+                ed.WriteMessage("\n" + DateTime.Now.ToString());
+                DateTime date2 = DateTime.Now;
+                ed.WriteMessage("\n" + date2.Subtract(date1).ToString());
+
+            }
+        }
+    }
+}
