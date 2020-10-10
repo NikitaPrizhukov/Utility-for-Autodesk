@@ -1,0 +1,91 @@
+using Autodesk.AutoCAD.Runtime;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Colors;
+
+//опеределение всех замкнутых полилиний и заполнение их сплошной красной штриховкой, нужно для отпеределения разрывов между зонами
+
+namespace HatchALL
+{
+    public class Class1
+    {
+        [CommandMethod("HatchALL")]
+
+        public void HatchALL()
+        {
+            Document doc = Application.DocumentManager.MdiActiveDocument;
+            Database db = doc.Database;
+            Editor ed = doc.Editor;
+            using (Transaction acTrans = doc.TransactionManager.StartTransaction())
+            {
+                PromptSelectionResult pr = ed.GetSelection();
+                int z = 0;
+                if (pr.Status != PromptStatus.OK)
+                {
+                    ed.WriteMessage("\nНичего нет!");
+                    return;
+                }
+
+                BlockTable acBlkTbl;
+                acBlkTbl = acTrans.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+                LayerTable layer = acTrans.GetObject(db.LayerTableId, OpenMode.ForRead, false, true) as LayerTable;
+
+                foreach (ObjectId LaerOb in layer)
+                {
+                    LayerTableRecord acLyrTblRec;
+                    acLyrTblRec = acTrans.GetObject(LaerOb, OpenMode.ForRead) as LayerTableRecord;
+                    if (acLyrTblRec.Name == "!NewLayer")
+                    {
+                        z = 1;
+                    }
+                }
+
+                if (z == 0)
+                {
+                    layer.UpgradeOpen();
+
+                    LayerTableRecord newLayer = new LayerTableRecord();
+                    newLayer.Name = "!NewLayer";
+
+                    newLayer.LineWeight = LineWeight.LineWeight005;
+                    newLayer.Description = "Это новый слой ";
+
+                    newLayer.Color = Color.FromRgb(255, 0, 0);
+
+                    layer.Add(newLayer);
+                    acTrans.AddNewlyCreatedDBObject(newLayer, true);
+                }
+
+                SelectionSet SellSet = pr.Value;
+                foreach (SelectedObject SelObj in SellSet)
+                {
+                    try
+                    {
+                        if (SelObj.ObjectId.ObjectClass.Name == "AcDbPolyline")
+                        {
+                            Polyline poly = acTrans.GetObject(SelObj.ObjectId, OpenMode.ForRead, true, true) as Polyline;
+                            ObjectIdCollection Coll = new ObjectIdCollection();
+                            Coll.Add(poly.ObjectId);
+                            BlockTableRecord acBlkTblRec;
+                            acBlkTblRec = acTrans.GetObject(acBlkTbl[BlockTableRecord.ModelSpace], OpenMode.ForWrite) as BlockTableRecord;
+                            Hatch hatch = new Hatch();
+                            acBlkTblRec.AppendEntity(hatch);
+                            acTrans.AddNewlyCreatedDBObject(hatch, true);
+                            hatch.SetDatabaseDefaults();
+                            hatch.SetHatchPattern(HatchPatternType.PreDefined, "SOLID");
+                            hatch.Layer = "!NewLayer";
+                            hatch.Associative = true;
+                            hatch.AppendLoop(HatchLoopTypes.Outermost, Coll);
+                            hatch.EvaluateHatch(true);
+
+
+                        }
+                    }
+                    catch { }
+                }
+                acTrans.Commit();
+            }
+        }
+    }
+}
