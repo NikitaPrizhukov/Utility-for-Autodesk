@@ -1,0 +1,73 @@
+using Autodesk.AutoCAD.Runtime;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Colors;
+using Entity = Autodesk.AutoCAD.DatabaseServices.Entity;
+
+//выделение всех элементов внутри контура или контуров
+
+[assembly: CommandClass(typeof(MakeContour.MyCommands))]
+
+namespace MakeContour
+{
+
+    public class MyCommands
+    {
+        [CommandMethod("ICSmega")]
+        public void ICSmega()
+        {
+            Document doc = Application.DocumentManager.MdiActiveDocument;
+            Database db = doc.Database;
+            Editor ed = doc.Editor;
+            using (Transaction acTrans = doc.TransactionManager.StartTransaction())
+            {
+                PromptSelectionResult pr = ed.SelectPrevious();
+                int i, z = 0;
+                if (pr.Status != PromptStatus.OK)
+                {
+                    ed.WriteMessage("\nНичего нет!");
+                    return;
+                }
+                Color col = new Color();
+                col = Color.FromRgb(255, 0, 0);
+               
+                SelectionSet SellSet = pr.Value;
+                Point3dCollection Collect = new Point3dCollection();
+                foreach (SelectedObject SelObj in SellSet)
+                {
+                    try
+                    {
+                        if (SelObj.ObjectId.ObjectClass.Name == "AcDbPolyline")
+                        {
+                            ObjectId PolyID = SelObj.ObjectId;
+                            Polyline poly = acTrans.GetObject(PolyID, OpenMode.ForRead) as Polyline;
+                        
+                            for (i = 0; i < poly.NumberOfVertices; i++)
+                            {
+                                Collect.Add(poly.GetPoint3dAt(i));
+                            }
+
+
+                        }                 
+                    }
+                    catch { }                    
+                }
+                PromptSelectionResult pre = ed.SelectWindowPolygon(Collect);
+                SelectionSet Poor = pre.Value;
+                
+                foreach (SelectedObject SelObjTwo in Poor)
+                {
+                    Entity acEnt = acTrans.GetObject(SelObjTwo.ObjectId, OpenMode.ForWrite) as Entity;
+                    z = z + 1;
+                }
+                doc.Editor.CommandAsync(Poor);
+
+
+                acTrans.Commit();
+                ed.WriteMessage(z.ToString());
+            }
+        }
+    }
+}
